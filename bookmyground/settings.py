@@ -130,6 +130,12 @@ CORS_ALLOWED_ORIGINS = os.getenv(
     'CORS_ALLOWED_ORIGINS', 'http://localhost:3000'
 ).split(',')
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_ALL_ORIGINS = DEBUG  # Allow all in dev mode for React Native
+
+# ----- CSRF Trusted Origins (needed for PythonAnywhere) -----
+CSRF_TRUSTED_ORIGINS = os.getenv(
+    'CSRF_TRUSTED_ORIGINS', 'http://localhost:8000,http://localhost:8001'
+).split(',')
 
 # ----- Firebase -----
 FIREBASE_CREDENTIALS_PATH = os.getenv('FIREBASE_CREDENTIALS', '')
