@@ -82,7 +82,9 @@ class Booking(models.Model):
     )
     customer_name = models.CharField(max_length=150, blank=True)
     customer_phone = models.CharField(max_length=15, blank=True)
+    player_count = models.PositiveIntegerField(default=1)
     notes = models.TextField(blank=True)
+    special_requests = models.TextField(blank=True)
     cancellation_reason = models.TextField(blank=True)
     cancelled_by = models.CharField(max_length=10, blank=True)  # 'customer' or 'admin'
     created_at = models.DateTimeField(auto_now_add=True)
@@ -103,6 +105,13 @@ class Booking(models.Model):
                 random.choices(string.ascii_uppercase + string.digits, k=8)
             )
         super().save(*args, **kwargs)
+
+    @property
+    def outstanding_amount(self):
+        paid_amount = sum(
+            payment.amount for payment in self.payments.filter(status='success')
+        )
+        return max(self.total_amount - paid_amount, 0)
 
 
 class Payment(models.Model):
@@ -139,3 +148,32 @@ class Payment(models.Model):
 
     def __str__(self):
         return f"Payment {self.transaction_id} — ₹{self.amount} — {self.status}"
+
+
+class PaymentOrder(models.Model):
+    """Gateway order created before collecting payment."""
+
+    STATUS_CHOICES = (
+        ('created', 'Created'),
+        ('paid', 'Paid'),
+        ('failed', 'Failed'),
+        ('cancelled', 'Cancelled'),
+    )
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    booking = models.ForeignKey(Booking, on_delete=models.CASCADE, related_name='payment_orders')
+    gateway = models.CharField(max_length=30, default='razorpay')
+    gateway_order_id = models.CharField(max_length=100, unique=True)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    currency = models.CharField(max_length=10, default='INR')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='created')
+    raw_response = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'payment_orders'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.gateway} {self.gateway_order_id} - {self.status}"

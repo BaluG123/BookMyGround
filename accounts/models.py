@@ -66,3 +66,85 @@ class User(AbstractBaseUser, PermissionsMixin):
     @property
     def is_customer(self):
         return self.role == 'customer'
+
+
+class NotificationDevice(models.Model):
+    """FCM device tokens registered by users."""
+
+    PLATFORM_CHOICES = (
+        ('android', 'Android'),
+        ('ios', 'iOS'),
+        ('web', 'Web'),
+    )
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='notification_devices',
+    )
+    token = models.CharField(max_length=255, unique=True)
+    platform = models.CharField(max_length=20, choices=PLATFORM_CHOICES)
+    device_name = models.CharField(max_length=120, blank=True)
+    is_active = models.BooleanField(default=True)
+    last_seen_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'notification_devices'
+        ordering = ['-last_seen_at']
+
+    def __str__(self):
+        return f"{self.user.email} - {self.platform}"
+
+
+class PushNotification(models.Model):
+    """Stored notifications for in-app inbox and push delivery tracking."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    recipient = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='push_notifications',
+    )
+    title = models.CharField(max_length=150)
+    body = models.TextField()
+    notification_type = models.CharField(max_length=50, default='general')
+    data = models.JSONField(default=dict, blank=True)
+    is_read = models.BooleanField(default=False)
+    sent_at = models.DateTimeField(auto_now_add=True)
+    read_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'push_notifications'
+        ordering = ['-sent_at']
+
+    def __str__(self):
+        return f"{self.recipient.email} - {self.title}"
+
+
+class PayoutProfile(models.Model):
+    """Bank or UPI settlement details for ground owners."""
+
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name='payout_profile',
+    )
+    account_holder_name = models.CharField(max_length=150, blank=True)
+    bank_account_number = models.CharField(max_length=34, blank=True)
+    ifsc_code = models.CharField(max_length=20, blank=True)
+    upi_id = models.CharField(max_length=100, blank=True)
+    bank_name = models.CharField(max_length=120, blank=True)
+    branch_name = models.CharField(max_length=120, blank=True)
+    beneficiary_code = models.CharField(max_length=100, blank=True)
+    is_verified = models.BooleanField(default=False)
+    verification_notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'payout_profiles'
+
+    def __str__(self):
+        return f"PayoutProfile({self.user.email})"

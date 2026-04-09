@@ -15,5 +15,8 @@ urlpatterns = [
     path('<uuid:pk>/cancel/', views.BookingCancelView.as_view(), name='booking-cancel'),
     path('<uuid:pk>/confirm/', views.BookingConfirmView.as_view(), name='booking-confirm'),
     path('<uuid:pk>/complete/', views.BookingCompleteView.as_view(), name='booking-complete'),
+    path('<uuid:pk>/payment-order/', views.BookingPaymentOrderView.as_view(), name='booking-payment-order'),
+    path('<uuid:pk>/payment-verify/', views.BookingPaymentVerifyView.as_view(), name='booking-payment-verify'),
     path('<uuid:pk>/payment/', views.BookingPaymentView.as_view(), name='booking-payment'),
+    path('razorpay/webhook/', views.RazorpayWebhookView.as_view(), name='razorpay-webhook'),
 ]

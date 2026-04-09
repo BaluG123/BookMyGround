@@ -142,6 +142,11 @@ CSRF_TRUSTED_ORIGINS = os.getenv(
 # ----- Firebase -----
 FIREBASE_CREDENTIALS_PATH = os.getenv('FIREBASE_CREDENTIALS', '')
 
+# ----- Payments -----
+RAZORPAY_KEY_ID = os.getenv('RAZORPAY_KEY_ID', '')
+RAZORPAY_KEY_SECRET = os.getenv('RAZORPAY_KEY_SECRET', '')
+RAZORPAY_WEBHOOK_SECRET = os.getenv('RAZORPAY_WEBHOOK_SECRET', '')
+
 # ----- File Upload Limits -----
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
 FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB

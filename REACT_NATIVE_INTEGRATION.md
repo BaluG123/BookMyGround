@@ -59,6 +59,11 @@ The admin panel has these sections:
 | 5 | `/profile/` | GET | ✅ | Any | Get my profile | — | `{id, email, full_name, phone, role, avatar, city, ...}` |
 | 6 | `/profile/` | PUT/PATCH | ✅ | Any | Update profile | `{full_name, phone, avatar, city, state}` | Updated user object |
 | 7 | `/change-password/` | POST | ✅ | Any | Change password | `{old_password, new_password}` | `{message}` |
+| 8 | `/push/register/` | POST | ✅ | Any | Register FCM device token | `{token, platform, device_name}` | Device object |
+| 9 | `/push/unregister/` | POST | ✅ | Any | Unregister FCM device token | `{token}` | `{message, updated}` |
+| 10 | `/notifications/` | GET | ✅ | Any | List in-app notifications | `?unread_only=true&type=booking_confirmed` | Paginated notifications |
+| 11 | `/notifications/{id}/read/` | PATCH | ✅ | Any | Mark notification read | — | Notification object |
+| 12 | `/payout-profile/` | GET/PATCH | ✅ | Admin | Store admin bank/UPI payout details | `{account_holder_name, bank_account_number, ifsc_code, upi_id, bank_name, branch_name}` | Payout profile |
 
 ---
 
@@ -69,6 +74,7 @@ The admin panel has these sections:
 | 8 | `/` | GET | ❌ | Public | List all active grounds | `?city=Bangalore&ground_type=cricket&min_price=500&max_price=2000&search=arena&ordering=-avg_rating` |
 | 9 | `/` | POST | ✅ | Admin | Create a ground | `{name, description, ground_type, surface_type, address, city, state, pincode, latitude, longitude, opening_time, closing_time, max_players, rules, cancellation_policy, amenity_ids: [1,2,3]}` |
 | 10 | `/{id}/` | GET | ❌ | Public | Ground detail (full) | — |
+| 10A | `/{id}/availability/` | GET | ❌ | Public | Day-wise availability summary | `?date=2026-04-10` |
 | 11 | `/{id}/` | PUT/PATCH | ✅ | Owner | Update ground | Same as create |
 | 12 | `/{id}/` | DELETE | ✅ | Owner | Soft-delete (deactivate) | — |
 | 13 | `/my-grounds/` | GET | ✅ | Admin | List admin's own grounds | — |
@@ -90,18 +96,21 @@ The admin panel has these sections:
 
 | # | Endpoint | Method | Auth | Role | Description | Request Body / Params |
 |---|---|---|---|---|---|---|
-| 25 | `/slots/` | GET | ✅ | Any | List slots | `?ground={id}&date=2026-04-10` |
+| 25 | `/slots/` | GET | ✅ | Any | List slots | `?ground={id}&date=2026-04-10&bookable_only=true` |
 | 26 | `/slots/create/` | POST | ✅ | Admin | Bulk create slots | `{ground_id, date, slots: [{start_time, end_time}, ...]}` |
 | 27 | `/slots/{id}/` | PATCH | ✅ | Owner | Update slot | `{is_available}` |
 | 28 | `/slots/{id}/delete/` | DELETE | ✅ | Owner | Delete slot (if not booked) | — |
-| 29 | `/` | GET | ✅ | Any | List my bookings (auto-filtered by role) | — |
-| 30 | `/` | POST | ✅ | Customer | Create booking | `{ground, time_slot, pricing_plan, booking_date, start_time, end_time, duration_hours, total_amount, customer_name, customer_phone, notes}` |
+| 29 | `/` | GET | ✅ | Any | List my bookings (auto-filtered by role) | `?status=confirmed&upcoming_only=true` |
+| 30 | `/` | POST | ✅ | Customer | Create booking | `{ground, time_slot, pricing_plan, booking_date, start_time, end_time, customer_name, customer_phone, player_count, notes, special_requests}` |
 | 31 | `/{id}/` | GET | ✅ | Participant | Booking detail | — |
 | 32 | `/{id}/cancel/` | PATCH | ✅ | Participant | Cancel booking | `{reason}` |
 | 33 | `/{id}/confirm/` | PATCH | ✅ | Admin | Confirm booking | — |
 | 34 | `/{id}/complete/` | PATCH | ✅ | Admin | Mark completed | — |
-| 35 | `/{id}/payment/` | POST | ✅ | Participant | Record payment | `{amount, payment_method, transaction_id, status}` |
-| 36 | `/admin-bookings/` | GET | ✅ | Admin | All bookings for admin's grounds | `?ground={id}&date=2026-04-10&status=confirmed` |
+| 35 | `/{id}/payment-order/` | POST | ✅ | Customer | Create Razorpay order | `{amount?}` |
+| 36 | `/{id}/payment-verify/` | POST | ✅ | Customer | Verify Razorpay checkout response | `{razorpay_order_id, razorpay_payment_id, razorpay_signature, payment_method, gateway_response}` |
+| 37 | `/{id}/payment/` | POST | ✅ | Participant | Record payment manually | `{amount, payment_method, transaction_id, status, gateway_response}` |
+| 38 | `/razorpay/webhook/` | POST | ❌ | Gateway | Razorpay webhook receiver | Raw webhook payload |
+| 39 | `/admin-bookings/` | GET | ✅ | Admin | All bookings for admin's grounds | `?ground={id}&date=2026-04-10&status=confirmed` |
 
 ---
 
@@ -109,11 +118,11 @@ The admin panel has these sections:
 
 | # | Endpoint | Method | Auth | Role | Description | Request Body |
 |---|---|---|---|---|---|---|
-| 37 | `/` | GET | ❌ | Public | List reviews | `?ground={id}` |
-| 38 | `/create/` | POST | ✅ | Customer | Create review (requires completed booking) | `{ground, rating, comment}` |
-| 39 | `/{id}/` | PATCH | ✅ | Author | Update review | `{rating, comment}` |
-| 40 | `/{id}/delete/` | DELETE | ✅ | Author | Delete review | — |
-| 41 | `/{id}/reply/` | POST | ✅ | Ground Owner | Reply to review | `{reply}` |
+| 40 | `/` | GET | ❌ | Public | List reviews | `?ground={id}` |
+| 41 | `/create/` | POST | ✅ | Customer | Create review (requires completed booking) | `{ground, rating, comment}` |
+| 42 | `/{id}/` | PATCH | ✅ | Author | Update review | `{rating, comment}` |
+| 43 | `/{id}/delete/` | DELETE | ✅ | Author | Delete review | — |
+| 44 | `/{id}/reply/` | POST | ✅ | Ground Owner | Reply to review | `{reply}` |
 
 ---
 
@@ -121,10 +130,10 @@ The admin panel has these sections:
 
 | # | URL | Description |
 |---|---|---|
-| 42 | `/api/docs/` | Swagger UI (interactive API testing) |
-| 43 | `/api/redoc/` | ReDoc (readable API docs) |
-| 44 | `/api/schema/` | OpenAPI 3.0 JSON schema |
-| 45 | `/admin/` | Django admin panel |
+| 45 | `/api/docs/` | Swagger UI (interactive API testing) |
+| 46 | `/api/redoc/` | ReDoc (readable API docs) |
+| 47 | `/api/schema/` | OpenAPI 3.0 JSON schema |
+| 48 | `/admin/` | Django admin panel |
 
 ---
 

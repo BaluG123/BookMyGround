@@ -8,6 +8,7 @@ urlpatterns = [
     path('amenities/', views.AmenityListView.as_view(), name='amenity-list'),
     path('favorites/', views.FavoriteListCreateView.as_view(), name='favorite-list-create'),
     path('favorites/<uuid:pk>/', views.FavoriteDeleteView.as_view(), name='favorite-delete'),
+    path('<uuid:pk>/availability/', views.GroundAvailabilityView.as_view(), name='ground-availability'),
     path('<uuid:pk>/', views.GroundDetailView.as_view(), name='ground-detail'),
 
     # Ground Images

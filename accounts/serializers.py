@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import authenticate
 from .models import User
+from .models import NotificationDevice, PushNotification, PayoutProfile
 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
@@ -87,3 +88,70 @@ class UserMiniSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['id', 'full_name', 'avatar', 'city']
+
+
+class NotificationDeviceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = NotificationDevice
+        fields = [
+            'id', 'token', 'platform', 'device_name',
+            'is_active', 'last_seen_at', 'created_at',
+        ]
+        read_only_fields = ['id', 'is_active', 'last_seen_at', 'created_at']
+
+    def create(self, validated_data):
+        user = self.context['request'].user
+        device, _ = NotificationDevice.objects.update_or_create(
+            token=validated_data['token'],
+            defaults={
+                'user': user,
+                'platform': validated_data['platform'],
+                'device_name': validated_data.get('device_name', ''),
+                'is_active': True,
+            },
+        )
+        return device
+
+
+class NotificationDeviceUnregisterSerializer(serializers.Serializer):
+    token = serializers.CharField()
+
+
+class PushNotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PushNotification
+        fields = [
+            'id', 'title', 'body', 'notification_type',
+            'data', 'is_read', 'sent_at', 'read_at',
+        ]
+        read_only_fields = fields
+
+
+class PayoutProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PayoutProfile
+        fields = [
+            'account_holder_name',
+            'bank_account_number',
+            'ifsc_code',
+            'upi_id',
+            'bank_name',
+            'branch_name',
+            'beneficiary_code',
+            'is_verified',
+            'verification_notes',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = ['is_verified', 'verification_notes', 'created_at', 'updated_at']
+
+    def validate(self, attrs):
+        bank_account_number = attrs.get('bank_account_number') or getattr(self.instance, 'bank_account_number', '')
+        ifsc_code = attrs.get('ifsc_code') or getattr(self.instance, 'ifsc_code', '')
+        upi_id = attrs.get('upi_id') or getattr(self.instance, 'upi_id', '')
+
+        if not upi_id and not (bank_account_number and ifsc_code):
+            raise serializers.ValidationError(
+                'Provide either UPI ID or both bank account number and IFSC code.'
+            )
+        return attrs

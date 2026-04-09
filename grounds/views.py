@@ -2,7 +2,9 @@ from rest_framework import generics, status, parsers
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
+from datetime import datetime
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 
 from .models import Ground, GroundImage, PricingPlan, Amenity, Favorite
 from .serializers import (
@@ -17,6 +19,7 @@ from .serializers import (
 )
 from .filters import GroundFilter
 from accounts.permissions import IsAdminUser, IsGroundOwner
+from bookings.models import TimeSlot
 
 
 # ─── Ground CRUD ────────────────────────────────────────────────
@@ -112,6 +115,66 @@ class MyGroundsView(generics.ListAPIView):
             is_active=True
         ).select_related('owner').prefetch_related(
             'images', 'pricing_plans', 'amenities'
+        )
+
+
+class GroundAvailabilityView(APIView):
+    """GET /api/v1/grounds/{id}/availability/?date=YYYY-MM-DD"""
+
+    permission_classes = [AllowAny]
+
+    def get(self, request, pk):
+        ground = get_object_or_404(Ground, pk=pk, is_active=True)
+        requested_date = request.query_params.get('date') or str(timezone.localdate())
+
+        try:
+            date = datetime.strptime(requested_date, '%Y-%m-%d').date()
+        except ValueError:
+            return Response(
+                {'error': 'Invalid date format. Use YYYY-MM-DD.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        slots = TimeSlot.objects.filter(
+            ground=ground,
+            date=date,
+        ).order_by('start_time')
+        available_slots = slots.filter(is_available=True, is_booked=False)
+        next_available = available_slots.first()
+
+        slot_payload = [
+            {
+                'id': str(slot.id),
+                'start_time': slot.start_time,
+                'end_time': slot.end_time,
+                'is_available': slot.is_available,
+                'is_booked': slot.is_booked,
+                'is_bookable': slot.is_bookable,
+            }
+            for slot in slots
+        ]
+
+        return Response(
+            {
+                'ground_id': str(ground.id),
+                'ground_name': ground.name,
+                'date': date,
+                'opening_time': ground.opening_time,
+                'closing_time': ground.closing_time,
+                'total_slots': slots.count(),
+                'available_slots_count': available_slots.count(),
+                'booked_slots_count': slots.filter(is_booked=True).count(),
+                'next_available_slot': (
+                    {
+                        'id': str(next_available.id),
+                        'start_time': next_available.start_time,
+                        'end_time': next_available.end_time,
+                    }
+                    if next_available
+                    else None
+                ),
+                'slots': slot_payload,
+            }
         )
 
 

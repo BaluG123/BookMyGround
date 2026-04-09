@@ -46,6 +46,7 @@ class GroundListSerializer(serializers.ModelSerializer):
     ground_type_display = serializers.CharField(source='get_ground_type_display', read_only=True)
     surface_type_display = serializers.CharField(source='get_surface_type_display', read_only=True)
     min_price = serializers.SerializerMethodField()
+    pricing_summary = serializers.SerializerMethodField()
     amenities = AmenitySerializer(many=True, read_only=True)
     is_favorited = serializers.SerializerMethodField()
 
@@ -57,7 +58,7 @@ class GroundListSerializer(serializers.ModelSerializer):
             'city', 'state', 'address',
             'latitude', 'longitude',
             'avg_rating', 'total_reviews', 'total_bookings',
-            'primary_image', 'min_price', 'amenities',
+            'primary_image', 'min_price', 'pricing_summary', 'amenities',
             'opening_time', 'closing_time',
             'is_active', 'is_verified', 'owner_name', 'is_favorited',
         ]
@@ -82,6 +83,15 @@ class GroundListSerializer(serializers.ModelSerializer):
             }
         return None
 
+    def get_pricing_summary(self, obj):
+        active_plans = obj.pricing_plans.filter(is_active=True).order_by('duration_hours')
+        if not active_plans.exists():
+            return None
+        return {
+            'active_plans_count': active_plans.count(),
+            'durations': [plan.get_duration_type_display() for plan in active_plans],
+        }
+
     def get_is_favorited(self, obj):
         request = self.context.get('request')
         if request and request.user.is_authenticated:
@@ -99,6 +109,8 @@ class GroundDetailSerializer(serializers.ModelSerializer):
     ground_type_display = serializers.CharField(source='get_ground_type_display', read_only=True)
     surface_type_display = serializers.CharField(source='get_surface_type_display', read_only=True)
     is_favorited = serializers.SerializerMethodField()
+    primary_image = serializers.SerializerMethodField()
+    pricing_summary = serializers.SerializerMethodField()
 
     class Meta:
         model = Ground
@@ -112,7 +124,7 @@ class GroundDetailSerializer(serializers.ModelSerializer):
             'opening_time', 'closing_time',
             'max_players', 'rules', 'cancellation_policy',
             'avg_rating', 'total_reviews', 'total_bookings',
-            'images', 'pricing_plans', 'is_favorited',
+            'primary_image', 'images', 'pricing_plans', 'pricing_summary', 'is_favorited',
             'created_at', 'updated_at',
         ]
 
@@ -121,6 +133,28 @@ class GroundDetailSerializer(serializers.ModelSerializer):
         if request and request.user.is_authenticated:
             return Favorite.objects.filter(customer=request.user, ground=obj).exists()
         return False
+
+    def get_primary_image(self, obj):
+        img = obj.images.filter(is_primary=True).first() or obj.images.first()
+        if img and img.image:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(img.image.url)
+            return img.image.url
+        return None
+
+    def get_pricing_summary(self, obj):
+        active_plans = obj.pricing_plans.filter(is_active=True).order_by('price')
+        if not active_plans.exists():
+            return None
+        lowest_plan = active_plans.first()
+        highest_plan = active_plans.order_by('-price').first()
+        return {
+            'active_plans_count': active_plans.count(),
+            'lowest_price': str(lowest_plan.price),
+            'highest_price': str(highest_plan.price),
+            'supports_weekend_pricing': active_plans.filter(weekend_price__isnull=False).exists(),
+        }
 
 
 class GroundCreateUpdateSerializer(serializers.ModelSerializer):

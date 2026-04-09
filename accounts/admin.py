@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import User
+from .models import User, NotificationDevice, PushNotification, PayoutProfile
 
 
 @admin.register(User)
@@ -23,3 +23,26 @@ class UserAdmin(BaseUserAdmin):
             'fields': ('email', 'full_name', 'role', 'password1', 'password2'),
         }),
     )
+
+
+@admin.register(NotificationDevice)
+class NotificationDeviceAdmin(admin.ModelAdmin):
+    list_display = ('user', 'platform', 'device_name', 'is_active', 'last_seen_at')
+    list_filter = ('platform', 'is_active', 'last_seen_at')
+    search_fields = ('user__email', 'device_name', 'token')
+    readonly_fields = ('created_at', 'last_seen_at')
+
+
+@admin.register(PushNotification)
+class PushNotificationAdmin(admin.ModelAdmin):
+    list_display = ('recipient', 'title', 'notification_type', 'is_read', 'sent_at')
+    list_filter = ('notification_type', 'is_read', 'sent_at')
+    search_fields = ('recipient__email', 'title', 'body')
+    readonly_fields = ('sent_at', 'read_at')
+
+
+@admin.register(PayoutProfile)
+class PayoutProfileAdmin(admin.ModelAdmin):
+    list_display = ('user', 'bank_name', 'upi_id', 'is_verified', 'updated_at')
+    list_filter = ('is_verified', 'updated_at')
+    search_fields = ('user__email', 'account_holder_name', 'bank_account_number', 'upi_id')
