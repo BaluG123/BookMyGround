@@ -10,10 +10,20 @@ class AmenitySerializer(serializers.ModelSerializer):
 
 
 class GroundImageSerializer(serializers.ModelSerializer):
+    image = serializers.SerializerMethodField()
+
     class Meta:
         model = GroundImage
         fields = ['id', 'image', 'is_primary', 'caption', 'uploaded_at']
         read_only_fields = ['id', 'uploaded_at']
+
+    def get_image(self, obj):
+        if obj.image:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.image.url)
+            return obj.image.url
+        return None
 
 
 class PricingPlanSerializer(serializers.ModelSerializer):

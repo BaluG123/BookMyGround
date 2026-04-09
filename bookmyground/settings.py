@@ -132,7 +132,7 @@ CORS_ALLOWED_ORIGINS = os.getenv(
     'CORS_ALLOWED_ORIGINS', 'http://localhost:3000'
 ).split(',')
 CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOW_ALL_ORIGINS = DEBUG  # Allow all in dev mode for React Native
+CORS_ALLOW_ALL_ORIGINS = True # Set to True to allow mobile apps (React Native) to connect to live server
 
 # ----- CSRF Trusted Origins (needed for PythonAnywhere) -----
 CSRF_TRUSTED_ORIGINS = os.getenv(
