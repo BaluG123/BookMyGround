@@ -107,7 +107,10 @@ class MyGroundsView(generics.ListAPIView):
     permission_classes = [IsAuthenticated, IsAdminUser]
 
     def get_queryset(self):
-        return Ground.objects.filter(owner=self.request.user).select_related('owner').prefetch_related(
+        return Ground.objects.filter(
+            owner=self.request.user,
+            is_active=True
+        ).select_related('owner').prefetch_related(
             'images', 'pricing_plans', 'amenities'
         )
 
