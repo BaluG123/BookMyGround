@@ -49,6 +49,7 @@ class GroundListSerializer(serializers.ModelSerializer):
     pricing_summary = serializers.SerializerMethodField()
     amenities = AmenitySerializer(many=True, read_only=True)
     is_favorited = serializers.SerializerMethodField()
+    verification_status_display = serializers.CharField(source='get_verification_status_display', read_only=True)
 
     class Meta:
         model = Ground
@@ -60,7 +61,8 @@ class GroundListSerializer(serializers.ModelSerializer):
             'avg_rating', 'total_reviews', 'total_bookings',
             'primary_image', 'min_price', 'pricing_summary', 'amenities',
             'opening_time', 'closing_time',
-            'is_active', 'is_verified', 'owner_name', 'is_favorited',
+            'is_active', 'is_verified', 'verification_status', 'verification_status_display',
+            'rejection_reason', 'owner_name', 'is_favorited',
         ]
 
     def get_primary_image(self, obj):
@@ -111,6 +113,8 @@ class GroundDetailSerializer(serializers.ModelSerializer):
     is_favorited = serializers.SerializerMethodField()
     primary_image = serializers.SerializerMethodField()
     pricing_summary = serializers.SerializerMethodField()
+    verification_status_display = serializers.CharField(source='get_verification_status_display', read_only=True)
+    verified_by_name = serializers.CharField(source='verified_by.full_name', read_only=True)
 
     class Meta:
         model = Ground
@@ -120,7 +124,8 @@ class GroundDetailSerializer(serializers.ModelSerializer):
             'surface_type', 'surface_type_display',
             'address', 'city', 'state', 'pincode',
             'latitude', 'longitude',
-            'amenities', 'is_active', 'is_verified',
+            'amenities', 'is_active', 'is_verified', 'verification_status', 'verification_status_display',
+            'submitted_for_review_at', 'verified_at', 'verified_by', 'verified_by_name', 'rejection_reason',
             'opening_time', 'closing_time',
             'max_players', 'rules', 'cancellation_policy',
             'avg_rating', 'total_reviews', 'total_bookings',
@@ -180,8 +185,12 @@ class GroundCreateUpdateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         amenities = validated_data.pop('amenity_ids', [])
+        validated_data.pop('is_active', None)
         ground = Ground.objects.create(
             owner=self.context['request'].user,
+            is_active=False,
+            is_verified=False,
+            verification_status='pending',
             **validated_data,
         )
         if amenities:
@@ -190,6 +199,7 @@ class GroundCreateUpdateSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         amenities = validated_data.pop('amenity_ids', None)
+        validated_data.pop('is_active', None)
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
@@ -208,7 +218,11 @@ class GroundImageUploadSerializer(serializers.ModelSerializer):
 class FavoriteSerializer(serializers.ModelSerializer):
     ground = GroundListSerializer(read_only=True)
     ground_id = serializers.PrimaryKeyRelatedField(
-        queryset=Ground.objects.filter(is_active=True),
+        queryset=Ground.objects.filter(
+            is_active=True,
+            is_verified=True,
+            verification_status='approved',
+        ),
         write_only=True,
         source='ground',
     )

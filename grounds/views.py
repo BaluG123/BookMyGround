@@ -22,6 +22,10 @@ from accounts.permissions import IsAdminUser, IsGroundOwner
 from bookings.models import TimeSlot
 
 
+def is_platform_reviewer(user):
+    return bool(user and user.is_authenticated and (user.is_superuser or user.is_staff))
+
+
 # ─── Ground CRUD ────────────────────────────────────────────────
 
 class GroundListCreateView(generics.ListCreateAPIView):
@@ -45,7 +49,11 @@ class GroundListCreateView(generics.ListCreateAPIView):
         return GroundListSerializer
 
     def get_queryset(self):
-        return Ground.objects.filter(is_active=True).select_related('owner').prefetch_related(
+        return Ground.objects.filter(
+            is_active=True,
+            is_verified=True,
+            verification_status='approved',
+        ).select_related('owner').prefetch_related(
             'images', 'pricing_plans', 'amenities'
         )
 
@@ -79,8 +87,24 @@ class GroundDetailView(generics.RetrieveUpdateDestroyAPIView):
         return GroundDetailSerializer
 
     def get_queryset(self):
-        return Ground.objects.select_related('owner').prefetch_related(
+        base_qs = Ground.objects.select_related('owner', 'verified_by').prefetch_related(
             'images', 'pricing_plans', 'amenities'
+        )
+        user = self.request.user
+
+        if self.request.method in ('PUT', 'PATCH', 'DELETE'):
+            return base_qs.filter(owner=user)
+
+        if is_platform_reviewer(user):
+            return base_qs
+
+        if user.is_authenticated and getattr(user, 'role', None) == 'admin':
+            return base_qs.filter(owner=user)
+
+        return base_qs.filter(
+            is_active=True,
+            is_verified=True,
+            verification_status='approved',
         )
 
     def destroy(self, request, *args, **kwargs):
@@ -112,7 +136,6 @@ class MyGroundsView(generics.ListAPIView):
     def get_queryset(self):
         return Ground.objects.filter(
             owner=self.request.user,
-            is_active=True
         ).select_related('owner').prefetch_related(
             'images', 'pricing_plans', 'amenities'
         )
@@ -124,7 +147,13 @@ class GroundAvailabilityView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request, pk):
-        ground = get_object_or_404(Ground, pk=pk, is_active=True)
+        ground = get_object_or_404(
+            Ground,
+            pk=pk,
+            is_active=True,
+            is_verified=True,
+            verification_status='approved',
+        )
         requested_date = request.query_params.get('date') or str(timezone.localdate())
 
         try:
@@ -260,7 +289,14 @@ class PricingPlanListCreateView(generics.ListCreateAPIView):
         return [AllowAny()]
 
     def get_queryset(self):
-        return PricingPlan.objects.filter(ground_id=self.kwargs['ground_id'])
+        ground_filters = {'ground_id': self.kwargs['ground_id']}
+        if self.request.method == 'GET':
+            ground_filters.update({
+                'ground__is_active': True,
+                'ground__is_verified': True,
+                'ground__verification_status': 'approved',
+            })
+        return PricingPlan.objects.filter(**ground_filters)
 
     def perform_create(self, serializer):
         ground = get_object_or_404(

@@ -21,6 +21,12 @@ class Amenity(models.Model):
 class Ground(models.Model):
     """A ground or turf managed by an admin user."""
 
+    VERIFICATION_STATUS_CHOICES = (
+        ('pending', 'Pending Review'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+    )
+
     GROUND_TYPE_CHOICES = (
         ('cricket', 'Cricket'),
         ('football', 'Football'),
@@ -62,6 +68,22 @@ class Ground(models.Model):
     amenities = models.ManyToManyField(Amenity, blank=True, related_name='grounds')
     is_active = models.BooleanField(default=True)
     is_verified = models.BooleanField(default=False)
+    verification_status = models.CharField(
+        max_length=20,
+        choices=VERIFICATION_STATUS_CHOICES,
+        default='pending',
+        db_index=True,
+    )
+    submitted_for_review_at = models.DateTimeField(auto_now_add=True)
+    verified_at = models.DateTimeField(null=True, blank=True)
+    verified_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='verified_grounds',
+    )
+    rejection_reason = models.TextField(blank=True)
     opening_time = models.TimeField()
     closing_time = models.TimeField()
     max_players = models.PositiveIntegerField(default=22, help_text='Max players allowed at once')
@@ -79,6 +101,32 @@ class Ground(models.Model):
 
     def __str__(self):
         return f"{self.name} — {self.city}"
+
+    def approve(self, reviewer=None):
+        self.verification_status = 'approved'
+        self.is_verified = True
+        self.is_active = True
+        self.verified_by = reviewer
+        from django.utils import timezone
+        self.verified_at = timezone.now()
+        self.rejection_reason = ''
+        self.save(update_fields=[
+            'verification_status', 'is_verified', 'is_active',
+            'verified_by', 'verified_at', 'rejection_reason', 'updated_at',
+        ])
+
+    def reject(self, reviewer=None, reason=''):
+        self.verification_status = 'rejected'
+        self.is_verified = False
+        self.is_active = False
+        self.verified_by = reviewer
+        from django.utils import timezone
+        self.verified_at = timezone.now()
+        self.rejection_reason = reason
+        self.save(update_fields=[
+            'verification_status', 'is_verified', 'is_active',
+            'verified_by', 'verified_at', 'rejection_reason', 'updated_at',
+        ])
 
 
 class GroundImage(models.Model):
