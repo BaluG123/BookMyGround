@@ -458,7 +458,11 @@ class BookingPaymentOrderView(APIView):
             order = create_razorpay_order(
                 amount=amount,
                 receipt=booking.booking_number,
-                partial_payment=amount < booking.total_amount,
+                # Each order here is created for the exact amount the customer
+                # should pay now. We support split booking payments by creating
+                # a smaller order, not by asking Razorpay to treat that order
+                # itself as partially payable.
+                partial_payment=False,
                 notes={
                     'booking_id': str(booking.id),
                     'booking_number': booking.booking_number,
