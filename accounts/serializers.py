@@ -145,7 +145,24 @@ class PayoutProfileSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['is_verified', 'verification_notes', 'created_at', 'updated_at']
 
+    def to_internal_value(self, data):
+        normalized = dict(data)
+        if 'upi_id' in normalized and normalized['upi_id'] is not None:
+            normalized['upi_id'] = str(normalized['upi_id']).strip().lower()
+        if 'ifsc_code' in normalized and normalized['ifsc_code'] is not None:
+            normalized['ifsc_code'] = str(normalized['ifsc_code']).strip().upper()
+        if 'bank_account_number' in normalized and normalized['bank_account_number'] is not None:
+            normalized['bank_account_number'] = str(normalized['bank_account_number']).replace(' ', '')
+        if 'account_holder_name' in normalized and normalized['account_holder_name'] is not None:
+            normalized['account_holder_name'] = str(normalized['account_holder_name']).strip()
+        if 'bank_name' in normalized and normalized['bank_name'] is not None:
+            normalized['bank_name'] = str(normalized['bank_name']).strip()
+        if 'branch_name' in normalized and normalized['branch_name'] is not None:
+            normalized['branch_name'] = str(normalized['branch_name']).strip()
+        return super().to_internal_value(normalized)
+
     def validate(self, attrs):
+        account_holder_name = attrs.get('account_holder_name') or getattr(self.instance, 'account_holder_name', '')
         bank_account_number = attrs.get('bank_account_number') or getattr(self.instance, 'bank_account_number', '')
         ifsc_code = attrs.get('ifsc_code') or getattr(self.instance, 'ifsc_code', '')
         upi_id = attrs.get('upi_id') or getattr(self.instance, 'upi_id', '')
@@ -153,5 +170,9 @@ class PayoutProfileSerializer(serializers.ModelSerializer):
         if not upi_id and not (bank_account_number and ifsc_code):
             raise serializers.ValidationError(
                 'Provide either UPI ID or both bank account number and IFSC code.'
+            )
+        if upi_id and not account_holder_name:
+            raise serializers.ValidationError(
+                {'account_holder_name': 'Account holder name is required so UPI apps can show the payee name.'}
             )
         return attrs

@@ -151,6 +151,10 @@ class PaymentOrderCreateSerializer(serializers.Serializer):
     amount = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
 
 
+class PaymentUpiIntentSerializer(serializers.Serializer):
+    amount = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+
+
 class PaymentVerifySerializer(serializers.Serializer):
     razorpay_order_id = serializers.CharField()
     razorpay_payment_id = serializers.CharField()

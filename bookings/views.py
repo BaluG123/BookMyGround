@@ -6,6 +6,7 @@ from django.shortcuts import get_object_or_404
 from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
+from urllib.parse import urlencode
 import json
 
 from .models import TimeSlot, Booking, Payment, PaymentOrder
@@ -18,6 +19,7 @@ from .serializers import (
     PaymentSerializer,
     PaymentCreateSerializer,
     PaymentOrderCreateSerializer,
+    PaymentUpiIntentSerializer,
     PaymentVerifySerializer,
 )
 from accounts.permissions import IsAdminUser, IsCustomerUser, IsBookingParticipant
@@ -493,6 +495,86 @@ class BookingPaymentOrderView(APIView):
                     'customer_name': booking.customer_name or booking.customer.full_name,
                     'customer_phone': booking.customer_phone or booking.customer.phone or '',
                     'customer_email': booking.customer.email,
+                },
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class BookingUpiIntentView(APIView):
+    """POST /api/v1/bookings/{id}/upi-intent/ — Build direct UPI payment intent."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        booking = get_object_or_404(Booking, pk=pk)
+        if booking.customer != request.user:
+            return Response(
+                {'error': 'Only the booking customer can start a UPI payment.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if booking.status == 'cancelled':
+            return Response(
+                {'error': 'Cancelled bookings cannot be paid.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = PaymentUpiIntentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        amount = serializer.validated_data.get('amount') or booking.outstanding_amount
+        if amount <= 0:
+            return Response(
+                {'error': 'No outstanding amount left for this booking.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if amount > booking.outstanding_amount:
+            return Response(
+                {'error': 'Requested amount cannot exceed outstanding amount.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        payout_profile = getattr(booking.ground.owner, 'payout_profile', None)
+        upi_id = (getattr(payout_profile, 'upi_id', '') or '').strip().lower()
+        if not upi_id:
+            return Response(
+                {'error': 'This ground owner has not added a UPI ID yet.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        payee_name = (
+            (getattr(payout_profile, 'account_holder_name', '') or '').strip()
+            or (getattr(payout_profile, 'bank_name', '') or '').strip()
+            or booking.ground.owner.full_name
+            or booking.ground.name
+        )
+        note = f'{booking.ground.name} booking {booking.booking_number}'
+
+        params = {
+            'pa': upi_id,
+            'pn': payee_name,
+            'am': str(amount),
+            'cu': 'INR',
+            'tn': note,
+            'tr': booking.booking_number,
+        }
+        upi_uri = f"upi://pay?{urlencode(params)}"
+
+        return Response(
+            {
+                'gateway': 'upi',
+                'upi_uri': upi_uri,
+                'upi_id': upi_id,
+                'payee_name': payee_name,
+                'amount': str(amount),
+                'currency': 'INR',
+                'note': note,
+                'booking': {
+                    'id': str(booking.id),
+                    'booking_number': booking.booking_number,
+                    'ground_name': booking.ground.name,
+                    'outstanding_amount': str(booking.outstanding_amount),
                 },
             },
             status=status.HTTP_200_OK,

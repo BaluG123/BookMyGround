@@ -227,5 +227,11 @@ class PayoutProfileView(generics.RetrieveUpdateAPIView):
     permission_classes = [IsAuthenticated, IsAdminUser]
 
     def get_object(self):
-        profile, _ = PayoutProfile.objects.get_or_create(user=self.request.user)
+        profile, created = PayoutProfile.objects.get_or_create(
+            user=self.request.user,
+            defaults={'account_holder_name': self.request.user.full_name or ''},
+        )
+        if not created and not profile.account_holder_name and self.request.user.full_name:
+            profile.account_holder_name = self.request.user.full_name
+            profile.save(update_fields=['account_holder_name', 'updated_at'])
         return profile
