@@ -549,15 +549,14 @@ class BookingUpiIntentView(APIView):
             or booking.ground.owner.full_name
             or booking.ground.name
         )
-        note = f'{booking.ground.name} booking {booking.booking_number}'
+        note = f'Booking {booking.booking_number}'
 
         params = {
             'pa': upi_id,
             'pn': payee_name,
-            'am': str(amount),
+            'am': f'{amount:.2f}',
             'cu': 'INR',
             'tn': note,
-            'tr': booking.booking_number,
         }
         upi_uri = f"upi://pay?{urlencode(params)}"
 
