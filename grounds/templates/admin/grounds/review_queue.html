@@ -1,0 +1,54 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+  <div id="content-main">
+    <div style="display:flex; gap:16px; margin-bottom:20px; flex-wrap:wrap;">
+      <div style="background:#fff; border:1px solid #ddd; border-radius:8px; padding:16px; min-width:200px;">
+        <div style="font-size:13px; color:#666;">Pending</div>
+        <div style="font-size:28px; font-weight:700;">{{ pending_grounds|length }}</div>
+      </div>
+      <div style="background:#fff; border:1px solid #ddd; border-radius:8px; padding:16px; min-width:200px;">
+        <div style="font-size:13px; color:#666;">Approved</div>
+        <div style="font-size:28px; font-weight:700;">{{ approved_count }}</div>
+      </div>
+      <div style="background:#fff; border:1px solid #ddd; border-radius:8px; padding:16px; min-width:200px;">
+        <div style="font-size:13px; color:#666;">Rejected</div>
+        <div style="font-size:28px; font-weight:700;">{{ rejected_count }}</div>
+      </div>
+    </div>
+
+    <div class="module">
+      <h2>Pending Grounds For Review</h2>
+      {% if pending_grounds %}
+        <table style="width:100%; border-collapse:collapse;">
+          <thead>
+            <tr>
+              <th style="text-align:left; padding:12px;">Ground</th>
+              <th style="text-align:left; padding:12px;">Owner</th>
+              <th style="text-align:left; padding:12px;">City</th>
+              <th style="text-align:left; padding:12px;">Submitted</th>
+              <th style="text-align:left; padding:12px;">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for ground in pending_grounds %}
+              <tr>
+                <td style="padding:12px;">{{ ground.name }}</td>
+                <td style="padding:12px;">{{ ground.owner.full_name }}<br><span style="color:#666;">{{ ground.owner.email }}</span></td>
+                <td style="padding:12px;">{{ ground.city }}, {{ ground.state }}</td>
+                <td style="padding:12px;">{{ ground.submitted_for_review_at }}</td>
+                <td style="padding:12px;">
+                  <a href="{% url 'admin:grounds_ground_change' ground.pk %}" class="button">Open</a>
+                  <a href="{% url 'admin:grounds_ground_approve' ground.pk %}" class="button">Approve</a>
+                  <a href="{% url 'admin:grounds_ground_reject' ground.pk %}" class="button">Reject</a>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p>There are no pending grounds right now.</p>
+      {% endif %}
+    </div>
+  </div>
+{% endblock %}

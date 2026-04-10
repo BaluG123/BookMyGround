@@ -1,6 +1,7 @@
 import uuid
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
 
 
 class Amenity(models.Model):
@@ -102,31 +103,38 @@ class Ground(models.Model):
     def __str__(self):
         return f"{self.name} — {self.city}"
 
+    def save(self, *args, **kwargs):
+        if self.verification_status == 'approved':
+            self.is_verified = True
+            self.is_active = True
+            self.rejection_reason = ''
+            if self.verified_at is None:
+                self.verified_at = timezone.now()
+        elif self.verification_status == 'rejected':
+            self.is_verified = False
+            self.is_active = False
+            if self.verified_at is None:
+                self.verified_at = timezone.now()
+        else:
+            self.is_verified = False
+            self.is_active = False
+            self.verified_at = None
+            self.verified_by = None
+        super().save(*args, **kwargs)
+
     def approve(self, reviewer=None):
         self.verification_status = 'approved'
-        self.is_verified = True
-        self.is_active = True
         self.verified_by = reviewer
-        from django.utils import timezone
         self.verified_at = timezone.now()
         self.rejection_reason = ''
-        self.save(update_fields=[
-            'verification_status', 'is_verified', 'is_active',
-            'verified_by', 'verified_at', 'rejection_reason', 'updated_at',
-        ])
+        self.save(update_fields=['verification_status', 'verified_by', 'verified_at', 'rejection_reason', 'updated_at'])
 
     def reject(self, reviewer=None, reason=''):
         self.verification_status = 'rejected'
-        self.is_verified = False
-        self.is_active = False
         self.verified_by = reviewer
-        from django.utils import timezone
         self.verified_at = timezone.now()
         self.rejection_reason = reason
-        self.save(update_fields=[
-            'verification_status', 'is_verified', 'is_active',
-            'verified_by', 'verified_at', 'rejection_reason', 'updated_at',
-        ])
+        self.save(update_fields=['verification_status', 'verified_by', 'verified_at', 'rejection_reason', 'updated_at'])
 
 
 class GroundImage(models.Model):
