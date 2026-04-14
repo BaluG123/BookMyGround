@@ -1,7 +1,12 @@
+import re
+
 from rest_framework import serializers
 from django.contrib.auth import authenticate
 from .models import User
 from .models import NotificationDevice, PushNotification, PayoutProfile
+
+
+UPI_ID_REGEX = re.compile(r'^[a-zA-Z0-9._-]{2,256}@[a-zA-Z]{2,64}$')
 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
@@ -170,6 +175,10 @@ class PayoutProfileSerializer(serializers.ModelSerializer):
         if not upi_id and not (bank_account_number and ifsc_code):
             raise serializers.ValidationError(
                 'Provide either UPI ID or both bank account number and IFSC code.'
+            )
+        if upi_id and not UPI_ID_REGEX.match(upi_id):
+            raise serializers.ValidationError(
+                {'upi_id': 'Enter a valid UPI ID like name@bank.'}
             )
         if upi_id and not account_holder_name:
             raise serializers.ValidationError(

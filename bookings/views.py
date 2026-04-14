@@ -8,6 +8,7 @@ from django.db.models import Sum
 from django.utils import timezone
 from urllib.parse import urlencode
 import json
+import re
 
 from .models import TimeSlot, Booking, Payment, PaymentOrder
 from .serializers import (
@@ -31,6 +32,9 @@ from .payment_gateway import (
     PaymentGatewayError,
 )
 from django.conf import settings
+
+
+UPI_ID_REGEX = re.compile(r'^[a-zA-Z0-9._-]{2,256}@[a-zA-Z]{2,64}$')
 
 
 def update_booking_payment_status(booking, latest_payment_status=None):
@@ -546,13 +550,18 @@ class BookingUpiIntentView(APIView):
                 {'error': 'This ground owner has not added a UPI ID yet.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        if not UPI_ID_REGEX.match(upi_id):
+            return Response(
+                {'error': 'The saved UPI ID is invalid. Ask the ground owner to update the payout profile.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         payee_name = (
             (getattr(payout_profile, 'account_holder_name', '') or '').strip()
-            or (getattr(payout_profile, 'bank_name', '') or '').strip()
-            or booking.ground.owner.full_name
+            or (booking.ground.owner.full_name or '').strip()
             or booking.ground.name
         )
+        bank_name = (getattr(payout_profile, 'bank_name', '') or '').strip()
         note = f'Booking {booking.booking_number}'
 
         params = {
@@ -570,6 +579,7 @@ class BookingUpiIntentView(APIView):
                 'upi_uri': upi_uri,
                 'upi_id': upi_id,
                 'payee_name': payee_name,
+                'bank_name': bank_name,
                 'amount': str(amount),
                 'currency': 'INR',
                 'note': note,
