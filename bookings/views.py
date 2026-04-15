@@ -9,6 +9,7 @@ from django.utils import timezone
 from urllib.parse import urlencode
 import json
 import re
+from decimal import Decimal
 
 from .models import TimeSlot, Booking, Payment, PaymentOrder
 from .serializers import (
