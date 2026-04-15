@@ -397,17 +397,13 @@ class BookingCompleteView(APIView):
 class BookingPaymentView(APIView):
     """POST /api/v1/bookings/{id}/payment/ — Record a payment."""
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsAdminUser]
 
     def post(self, request, pk):
         booking = get_object_or_404(Booking, pk=pk)
 
-        # Only customer or ground owner
-        if booking.customer != request.user and booking.ground.owner != request.user:
-            return Response(
-                {'error': 'Permission denied.'},
-                status=status.HTTP_403_FORBIDDEN,
-            )
+        serializer = PaymentCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
 
         amount = serializer.validated_data.get('amount')
         commission = Decimal('0.00')
