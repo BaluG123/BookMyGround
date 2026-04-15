@@ -31,28 +31,36 @@ def resolve_booking_price(ground, booking_date, duration_hours, pricing_plan=Non
                 {'pricing_plan': 'Selected pricing plan does not match the requested duration.'}
             )
         amount = pricing_plan.effective_weekend_price if weekend_booking else pricing_plan.price
-        return pricing_plan, Decimal(amount).quantize(TWOPLACES)
+        amount = Decimal(amount).quantize(TWOPLACES)
+    else:
+        matching_plan = ground.pricing_plans.filter(
+            is_active=True,
+            duration_hours=duration_hours,
+        ).order_by('price').first()
+        if matching_plan:
+            amount = matching_plan.effective_weekend_price if weekend_booking else matching_plan.price
+            amount = Decimal(amount).quantize(TWOPLACES)
+            pricing_plan = matching_plan
+        else:
+            hourly_plan = ground.pricing_plans.filter(
+                is_active=True,
+                duration_type='per_hour',
+            ).order_by('price').first()
+            if not hourly_plan:
+                raise serializers.ValidationError(
+                    {'pricing_plan': 'No active pricing plan available for this duration.'}
+                )
+            
+            hourly_rate = hourly_plan.effective_weekend_price if weekend_booking else hourly_plan.price
+            amount = (Decimal(hourly_rate) * duration_hours).quantize(TWOPLACES)
+            pricing_plan = hourly_plan
 
-    matching_plan = ground.pricing_plans.filter(
-        is_active=True,
-        duration_hours=duration_hours,
-    ).order_by('price').first()
-    if matching_plan:
-        amount = matching_plan.effective_weekend_price if weekend_booking else matching_plan.price
-        return matching_plan, Decimal(amount).quantize(TWOPLACES)
-
-    hourly_plan = ground.pricing_plans.filter(
-        is_active=True,
-        duration_type='per_hour',
-    ).order_by('price').first()
-    if hourly_plan:
-        hourly_rate = hourly_plan.effective_weekend_price if weekend_booking else hourly_plan.price
-        amount = (Decimal(hourly_rate) * duration_hours).quantize(TWOPLACES)
-        return hourly_plan, amount
-
-    raise serializers.ValidationError(
-        {'pricing_plan': 'No active pricing plan is available for the selected duration.'}
-    )
+    if amount < Decimal('100.00'):
+        raise serializers.ValidationError(
+            {'amount': 'Minimum booking price must be at least 100 INR.'}
+        )
+    
+    return pricing_plan, amount
 
 
 # ─── Time Slot Serializers ──────────────────────────────────────
@@ -126,9 +134,10 @@ class PaymentSerializer(serializers.ModelSerializer):
         model = Payment
         fields = [
             'id', 'booking', 'amount', 'payment_method',
-            'transaction_id', 'status', 'gateway_response', 'paid_at', 'created_at',
+            'transaction_id', 'status', 'platform_commission', 'owner_share',
+            'gateway_response', 'paid_at', 'created_at',
         ]
-        read_only_fields = ['id', 'created_at']
+        read_only_fields = ['id', 'platform_commission', 'owner_share', 'created_at']
 
 
 class PaymentOrderSerializer(serializers.ModelSerializer):

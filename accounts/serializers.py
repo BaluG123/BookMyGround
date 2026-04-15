@@ -172,16 +172,16 @@ class PayoutProfileSerializer(serializers.ModelSerializer):
         ifsc_code = attrs.get('ifsc_code') or getattr(self.instance, 'ifsc_code', '')
         upi_id = attrs.get('upi_id') or getattr(self.instance, 'upi_id', '')
 
-        if not upi_id and not (bank_account_number and ifsc_code):
+        if not upi_id:
             raise serializers.ValidationError(
-                'Provide either UPI ID or both bank account number and IFSC code.'
+                {'upi_id': 'UPI ID is mandatory for receiving payouts from the platform.'}
             )
-        if upi_id and not UPI_ID_REGEX.match(upi_id):
+        if not UPI_ID_REGEX.match(upi_id):
             raise serializers.ValidationError(
                 {'upi_id': 'Enter a valid UPI ID like name@bank.'}
             )
-        if upi_id and not account_holder_name:
+        if not account_holder_name:
             raise serializers.ValidationError(
-                {'account_holder_name': 'Account holder name is required so UPI apps can show the payee name.'}
+                {'account_holder_name': 'Account holder name is required so the platform can verify the payee.'}
             )
         return attrs

@@ -409,9 +409,22 @@ class BookingPaymentView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        serializer = PaymentCreateSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        payment = serializer.save(booking=booking)
+        amount = serializer.validated_data.get('amount')
+        commission = Decimal('0.00')
+        owner_share = amount
+
+        # Only apply commission for online/online-like payments if configured
+        if serializer.validated_data.get('payment_method') in ['online', 'upi', 'card', 'wallet']:
+            commission = Decimal('29.00')
+            if amount < commission:
+                commission = amount
+            owner_share = amount - commission
+
+        payment = serializer.save(
+            booking=booking,
+            platform_commission=commission,
+            owner_share=owner_share
+        )
 
         update_booking_payment_status(booking, latest_payment_status=payment.status)
 
@@ -543,6 +556,11 @@ class BookingUpiIntentView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        return Response(
+            {'error': 'Direct UPI payments are currently disabled. Please use the "online payment" (Razorpay) method to pay. You can select UPI inside the Razorpay checkout.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
         payout_profile = getattr(booking.ground.owner, 'payout_profile', None)
         upi_id = (getattr(payout_profile, 'upi_id', '') or '').strip().lower()
         if not upi_id:
@@ -629,12 +647,19 @@ class BookingPaymentVerifyView(APIView):
             gateway_order_id=data['razorpay_order_id'],
         )
 
+        commission = Decimal('29.00')
+        if payment_order.amount < commission:
+            commission = payment_order.amount
+        owner_share = payment_order.amount - commission
+
         with transaction.atomic():
             payment, created = Payment.objects.get_or_create(
                 transaction_id=data['razorpay_payment_id'],
                 defaults={
                     'booking': booking,
                     'amount': payment_order.amount,
+                    'platform_commission': commission,
+                    'owner_share': owner_share,
                     'payment_method': data.get('payment_method', 'online'),
                     'status': 'success',
                     'gateway_response': {
@@ -709,12 +734,19 @@ class RazorpayWebhookView(APIView):
         booking = payment_order.booking
 
         if event == 'payment.captured':
+            commission = Decimal('29.00')
+            if payment_order.amount < commission:
+                commission = payment_order.amount
+            owner_share = payment_order.amount - commission
+
             with transaction.atomic():
                 payment, created = Payment.objects.get_or_create(
                     transaction_id=payment_id,
                     defaults={
                         'booking': booking,
                         'amount': payment_order.amount,
+                        'platform_commission': commission,
+                        'owner_share': owner_share,
                         'payment_method': 'online',
                         'status': 'success',
                         'gateway_response': entity,
