@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} - BookMyGround</title>
+    <style>
+        :root {
+            --primary: #10B981;
+            --dark: #111827;
+            --text: #374151;
+            --bg: #F9FAFB;
+        }
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+        }
+        .header {
+            background: var(--dark);
+            color: white;
+            padding: 2rem 1rem;
+            text-align: center;
+        }
+        .container {
+            max-width: 800px;
+            margin: 2rem auto;
+            background: white;
+            padding: 3rem;
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        h1 { margin-top: 0; color: var(--dark); }
+        h2 { color: var(--dark); margin-top: 2rem; border-bottom: 2px solid var(--bg); padding-bottom: 0.5rem; }
+        .footer {
+            text-align: center;
+            padding: 2rem;
+            color: #9CA3AF;
+            font-size: 0.875rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>BookMyGround</h1>
+        <p>Your premium sports booking destination</p>
+    </div>
+    <div class="container">
+        <h1>{{ title }}</h1>
+        <p>Last Updated: April 15, 2026</p>
+
+        {% if content == 'privacy' %}
+        <h2>1. Information We Collect</h2>
+        <p>We collect information you provide directly to us, such as when you create an account, book a ground, or contact support. This includes your name, phone number, email address, and payment information processed securely through Razorpay.</p>
+        <h2>2. How We Use Information</h2>
+        <p>We use the information to process bookings, send notifications, prevent fraud, and improve our services. We do not sell your personal data to third parties.</p>
+        <h2>3. Data Security</h2>
+        <p>We implement industry-standard security measures to protect your information both online and offline.</p>
+        
+        {% elif content == 'terms' %}
+        <h2>1. Acceptance of Terms</h2>
+        <p>By using BookMyGround, you agree to comply with and be bound by these terms. If you do not agree, please do not use the service.</p>
+        <h2>2. Booking Rules</h2>
+        <p>Players must arrive 10 minutes before the slot starts. Any damage to the ground property will be the responsibility of the booking individual.</p>
+        <h2>3. Platform Fees</h2>
+        <p>A non-refundable platform fee of 29 INR is applied to every online booking.</p>
+
+        {% elif content == 'refund' %}
+        <h2>1. Cancellation Policy</h2>
+        <p>Bookings can be cancelled up to 24 hours before the scheduled slot for a partial refund. Cancellations made within 24 hours are non-refundable.</p>
+        <h2>2. Refund Process</h2>
+        <p>Refunds (minus platform commission) will be processed back to the original payment method within 5-7 business days.</p>
+        <h2>3. Ground Unavailability</h2>
+        <p>If a ground becomes unavailable due to maintenance or weather, a full refund will be issued.</p>
+        {% endif %}
+
+        <hr style="margin: 3rem 0; border: 0; border-top: 1px solid #E5E7EB;">
+        <p><a href="/" style="color: var(--primary); text-decoration: none;">&larr; Back to Home</a></p>
+    </div>
+    <div class="footer">
+        &copy; 2026 BookMyGround. All rights reserved.
+    </div>
+</body>
+</html>

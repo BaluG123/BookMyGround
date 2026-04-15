@@ -1,0 +1,240 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BookMyGround - Premium Sports Turf Booking</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap');
+        
+        :root {
+            --primary: #10B981;
+            --primary-glow: rgba(16, 185, 129, 0.4);
+            --dark: #0F172A;
+            --light-dark: #1E293B;
+            --accent: #F59E0B;
+            --text-main: #F8FAFC;
+            --text-dim: #94A3B8;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--dark);
+            color: var(--text-main);
+            margin: 0;
+            overflow-x: hidden;
+            scroll-behavior: smooth;
+        }
+
+        nav {
+            padding: 1.5rem 5%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(10px);
+            position: fixed;
+            width: 90%;
+            top: 0;
+            z-index: 1000;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 800;
+            letter-spacing: -1px;
+            color: var(--primary);
+        }
+
+        .hero {
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            background: linear-gradient(to bottom, rgba(15, 23, 42, 0.7), var(--dark)),
+                        url('{% static "images/hero.png" %}') no-repeat center center/cover;
+            padding: 0 10%;
+        }
+
+        .hero-content h1 {
+            font-size: 4.5rem;
+            font-weight: 800;
+            line-height: 1.1;
+            margin-bottom: 1.5rem;
+            background: linear-gradient(to right, #ffffff, var(--primary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .hero-content p {
+            font-size: 1.25rem;
+            color: var(--text-dim);
+            max-width: 600px;
+            margin: 0 auto 2.5rem;
+        }
+
+        .btn {
+            background: var(--primary);
+            color: white;
+            padding: 1rem 2.5rem;
+            border-radius: 50px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px var(--primary-glow);
+            display: inline-block;
+        }
+
+        .btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px var(--primary-glow);
+        }
+
+        .section {
+            padding: 6rem 10%;
+        }
+
+        .section-title {
+            text-align: center;
+            margin-bottom: 4rem;
+        }
+
+        .section-title h2 {
+            font-size: 2.5rem;
+            font-weight: 800;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2rem;
+        }
+
+        .card {
+            background: var(--light-dark);
+            padding: 2.5rem;
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: 0.3s;
+        }
+
+        .card:hover {
+            border-color: var(--primary);
+            background: rgba(16, 185, 129, 0.05);
+        }
+
+        .card i {
+            font-size: 2.5rem;
+            margin-bottom: 1.5rem;
+            display: block;
+        }
+
+        footer {
+            background: #020617;
+            padding: 4rem 10%;
+            text-align: center;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .footer-links {
+            margin: 2rem 0;
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .footer-links a {
+            color: var(--text-dim);
+            text-decoration: none;
+            font-size: 0.9rem;
+            transition: 0.3s;
+        }
+
+        .footer-links a:hover {
+            color: var(--primary);
+        }
+
+        .contact-pill {
+            display: inline-flex;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 0.5rem 1.5rem;
+            border-radius: 100px;
+            margin-top: 2rem;
+            color: var(--text-dim);
+            font-size: 0.8rem;
+        }
+
+        @media (max-width: 768px) {
+            .hero-content h1 { font-size: 2.5rem; }
+            nav { width: 90%; }
+        }
+    </style>
+</head>
+<body>
+    <nav>
+        <div class="logo">BOOKMYGROUND</div>
+        <div>
+            <a href="#features" style="color: white; text-decoration: none; margin-left: 20px;">Features</a>
+            <a href="#contact" style="color: white; text-decoration: none; margin-left: 20px;">Contact</a>
+        </div>
+    </nav>
+
+    <header class="hero">
+        <div class="hero-content">
+            <h1>Book Your Game <br> Seconds, Not Hours.</h1>
+            <p>The premium sports booking experience for Bangalore's top Cricket and Football turfs. Manage slots, split payments, and play more.</p>
+            <a href="#" class="btn">Get Started Now</a>
+        </div>
+    </header>
+
+    <section class="section" id="features">
+        <div class="section-title">
+            <h2>Why BookMyGround?</h2>
+            <p style="color: var(--text-dim);">The ultimate platform for players and owners.</p>
+        </div>
+        <div class="grid">
+            <div class="card">
+                <span style="font-size: 2.5rem;">⚡</span>
+                <h3>Instant Booking</h3>
+                <p style="color: var(--text-dim);">Live schedules from all top turfs. No more waiting for callbacks.</p>
+            </div>
+            <div class="card">
+                <span style="font-size: 2.5rem;">💳</span>
+                <h3>Secure Payments</h3>
+                <p style="color: var(--text-dim);">World-class payment security via Razorpay. Integrated UPI support.</p>
+            </div>
+            <div class="card">
+                <span style="font-size: 2.5rem;">📱</span>
+                <h3>Mobile Focused</h3>
+                <p style="color: var(--text-dim);">A premium native experience on Android and iOS. Book on the go.</p>
+            </div>
+        </div>
+    </section>
+
+    <footer id="contact">
+        <div class="logo" style="margin-bottom: 1rem;">BOOKMYGROUND</div>
+        <p style="color: var(--text-dim);">Making professional sports accessible for everyone.</p>
+        
+        <div class="contact-pill">
+            <span>📧 support@bookmyground.com</span>
+            <span style="margin: 0 1rem;">|</span>
+            <span>📞 +91-XXXXXXXXXX</span>
+        </div>
+
+        <div class="footer-links">
+            <a href="{% url 'privacy' %}">Privacy Policy</a>
+            <a href="{% url 'terms' %}">Terms & Conditions</a>
+            <a href="{% url 'refund' %}">Refund Policy</a>
+            <a href="/api/docs/">API Docs</a>
+        </div>
+        
+        <p style="color: #475569; font-size: 0.8rem; margin-top: 2rem;">
+            &copy; 2026 BaluG123/BookMyGround. All rights reserved.
+        </p>
+    </footer>
+</body>
+</html>

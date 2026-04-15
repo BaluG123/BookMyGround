@@ -8,7 +8,13 @@ from drf_spectacular.views import (
     SpectacularSwaggerView,
 )
 
+from .views import home_view, privacy_view, terms_view, refund_view
+
 urlpatterns = [
+    path('', home_view, name='home'),
+    path('privacy-policy/', privacy_view, name='privacy'),
+    path('terms-and-conditions/', terms_view, name='terms'),
+    path('refund-policy/', refund_view, name='refund'),
     path('admin/', admin.site.urls),
 
     # API v1
