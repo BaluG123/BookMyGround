@@ -100,15 +100,31 @@ class FirebaseLoginView(APIView):
         email = decoded.get('email', f'{uid}@firebase.local')
         name = decoded.get('name', '') or full_name or 'User'
 
-        user, created = User.objects.get_or_create(
-            firebase_uid=uid,
-            defaults={
-                'email': email,
-                'full_name': name,
-                'role': role,
-                'phone': phone or None,
-            },
-        )
+        user = User.objects.filter(firebase_uid=uid).first()
+        created = False
+
+        if user is None and email:
+            user = User.objects.filter(email__iexact=email).first()
+            if user and not user.firebase_uid:
+                user.firebase_uid = uid
+                updated_fields = ['firebase_uid', 'updated_at']
+                if not user.full_name and name:
+                    user.full_name = name
+                    updated_fields.insert(1, 'full_name')
+                if not user.phone and phone:
+                    user.phone = phone
+                    updated_fields.insert(1, 'phone')
+                user.save(update_fields=updated_fields)
+
+        if user is None:
+            user = User.objects.create(
+                firebase_uid=uid,
+                email=email,
+                full_name=name,
+                role=role,
+                phone=phone or None,
+            )
+            created = True
 
         token, _ = Token.objects.get_or_create(user=user)
         return Response(
