@@ -28,18 +28,21 @@ def normalize_code(value):
 def resolve_booking_price(ground, booking_date, duration_hours, pricing_plan=None):
     weekend_booking = booking_date.weekday() >= 5
 
+    # If a pricing plan is provided but doesn't match duration, ignore it and auto-select
     if pricing_plan:
         if pricing_plan.ground_id != ground.id:
             raise serializers.ValidationError({'pricing_plan': 'Pricing plan does not belong to this ground.'})
         if not pricing_plan.is_active:
             raise serializers.ValidationError({'pricing_plan': 'Selected pricing plan is inactive.'})
         if pricing_plan.duration_hours != duration_hours:
-            raise serializers.ValidationError(
-                {'pricing_plan': 'Selected pricing plan does not match the requested duration.'}
-            )
-        amount = pricing_plan.effective_weekend_price if weekend_booking else pricing_plan.price
-        amount = Decimal(amount).quantize(TWOPLACES)
-    else:
+            # Don't fail - just ignore the provided plan and auto-select below
+            pricing_plan = None
+        else:
+            # Pricing plan matches - use it
+            amount = pricing_plan.effective_weekend_price if weekend_booking else pricing_plan.price
+            amount = Decimal(amount).quantize(TWOPLACES)
+    
+    if not pricing_plan:
         matching_plan = ground.pricing_plans.filter(
             is_active=True,
             duration_hours=duration_hours,
