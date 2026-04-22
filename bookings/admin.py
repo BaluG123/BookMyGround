@@ -1,9 +1,15 @@
 from django.contrib import admin
-from .models import TimeSlot, Booking, Payment, PaymentOrder
+from .models import TimeSlot, Booking, BookingSlot, Payment, PaymentOrder
 
 
 class PaymentInline(admin.TabularInline):
     model = Payment
+    extra = 0
+    readonly_fields = ('created_at',)
+
+
+class BookingSlotInline(admin.TabularInline):
+    model = BookingSlot
     extra = 0
     readonly_fields = ('created_at',)
 
@@ -24,7 +30,7 @@ class BookingAdmin(admin.ModelAdmin):
     list_filter = ('status', 'payment_status', 'booking_date')
     search_fields = ('booking_number', 'customer__email', 'ground__name')
     readonly_fields = ('booking_number', 'created_at', 'updated_at')
-    inlines = [PaymentInline]
+    inlines = [BookingSlotInline, PaymentInline]
 
 
 @admin.register(Payment)

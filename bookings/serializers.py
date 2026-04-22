@@ -3,7 +3,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime
 from django.db import transaction
 from django.utils import timezone
-from .models import TimeSlot, Booking, Payment, PaymentOrder
+from .models import TimeSlot, Booking, BookingSlot, Payment, PaymentOrder
 from grounds.models import Ground, PricingPlan
 from accounts.serializers import UserMiniSerializer
 
@@ -75,6 +75,15 @@ class TimeSlotSerializer(serializers.ModelSerializer):
             'is_available', 'is_booked', 'is_bookable', 'created_at',
         ]
         read_only_fields = ['id', 'is_booked', 'created_at']
+
+
+class BookingSlotSerializer(serializers.ModelSerializer):
+    time_slot = TimeSlotSerializer(read_only=True)
+
+    class Meta:
+        model = BookingSlot
+        fields = ['id', 'time_slot', 'created_at']
+        read_only_fields = fields
 
 
 class TimeSlotBulkCreateSerializer(serializers.Serializer):
@@ -187,6 +196,7 @@ class BookingListSerializer(serializers.ModelSerializer):
     payment_status_display = serializers.CharField(source='get_payment_status_display', read_only=True)
     outstanding_amount = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     can_cancel = serializers.SerializerMethodField()
+    slot_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Booking
@@ -196,7 +206,7 @@ class BookingListSerializer(serializers.ModelSerializer):
             'booking_date', 'start_time', 'end_time', 'duration_hours',
             'total_amount', 'status', 'status_display',
             'payment_status', 'payment_status_display',
-            'outstanding_amount', 'can_cancel', 'created_at',
+            'outstanding_amount', 'can_cancel', 'slot_count', 'created_at',
         ]
 
     def get_ground_image(self, obj):
@@ -213,6 +223,16 @@ class BookingListSerializer(serializers.ModelSerializer):
     def get_can_cancel(self, obj):
         return obj.status not in ('cancelled', 'completed')
 
+    def get_slot_count(self, obj):
+        prefetched_slots = getattr(obj, 'booking_slots_cache', None)
+        if prefetched_slots is not None:
+            return len(prefetched_slots)
+        booking_slots = getattr(obj, 'booking_slots', None)
+        if booking_slots is not None:
+            count = booking_slots.count()
+            return count or (1 if obj.time_slot_id else 0)
+        return 1 if obj.time_slot_id else 0
+
 
 class BookingDetailSerializer(serializers.ModelSerializer):
     ground_name = serializers.CharField(source='ground.name', read_only=True)
@@ -221,6 +241,7 @@ class BookingDetailSerializer(serializers.ModelSerializer):
     customer_info = UserMiniSerializer(source='customer', read_only=True)
     time_slot_info = TimeSlotSerializer(source='time_slot', read_only=True)
     payments = PaymentSerializer(many=True, read_only=True)
+    booked_slots = serializers.SerializerMethodField()
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     payment_status_display = serializers.CharField(source='get_payment_status_display', read_only=True)
     outstanding_amount = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
@@ -243,6 +264,7 @@ class BookingDetailSerializer(serializers.ModelSerializer):
             'special_requests',
             'cancellation_reason', 'cancelled_by',
             'outstanding_amount', 'can_cancel', 'can_confirm', 'can_complete',
+            'booked_slots',
             'payments',
             'created_at', 'updated_at',
         ]
@@ -256,14 +278,39 @@ class BookingDetailSerializer(serializers.ModelSerializer):
     def get_can_complete(self, obj):
         return obj.status in ('pending', 'confirmed')
 
+    def get_booked_slots(self, obj):
+        booking_slots = getattr(obj, 'booking_slots_cache', None)
+        if booking_slots is None:
+            booking_slots = list(
+                obj.booking_slots.select_related('time_slot').order_by('time_slot__start_time')
+            )
+        if booking_slots:
+            return BookingSlotSerializer(booking_slots, many=True, context=self.context).data
+        if obj.time_slot:
+            return [
+                {
+                    'id': None,
+                    'time_slot': TimeSlotSerializer(obj.time_slot, context=self.context).data,
+                    'created_at': None,
+                }
+            ]
+        return []
+
 
 class BookingCreateSerializer(serializers.ModelSerializer):
     """Create a new booking (customer only)."""
 
+    time_slots = serializers.PrimaryKeyRelatedField(
+        queryset=TimeSlot.objects.select_related('ground').all(),
+        many=True,
+        required=False,
+        write_only=True,
+    )
+
     class Meta:
         model = Booking
         fields = [
-            'ground', 'time_slot', 'pricing_plan',
+            'ground', 'time_slot', 'time_slots', 'pricing_plan',
             'booking_date', 'start_time', 'end_time',
             'duration_hours', 'total_amount',
             'customer_name', 'customer_phone', 'player_count', 'notes',
@@ -282,6 +329,8 @@ class BookingCreateSerializer(serializers.ModelSerializer):
         booking_date = data['booking_date']
         start_time = data['start_time']
         end_time = data['end_time']
+        time_slot = data.get('time_slot')
+        time_slots = list(data.get('time_slots') or ([] if not time_slot else [time_slot]))
 
         if booking_date < timezone.localdate():
             raise serializers.ValidationError({'booking_date': 'Booking date cannot be in the past.'})
@@ -301,9 +350,34 @@ class BookingCreateSerializer(serializers.ModelSerializer):
                 {'player_count': f'Maximum allowed players for this ground is {ground.max_players}.'}
             )
 
-        # Check slot availability if provided
-        time_slot = data.get('time_slot')
-        if time_slot:
+        if time_slots:
+            unique_slot_ids = {slot.id for slot in time_slots}
+            if len(unique_slot_ids) != len(time_slots):
+                raise serializers.ValidationError({'time_slots': 'Duplicate slots are not allowed.'})
+
+            ordered_slots = sorted(time_slots, key=lambda slot: (slot.date, slot.start_time))
+
+            for index, slot in enumerate(ordered_slots):
+                if slot.ground != ground:
+                    raise serializers.ValidationError({'time_slots': 'Each selected slot must belong to this ground.'})
+                if not slot.is_bookable:
+                    raise serializers.ValidationError({'time_slots': 'One of the selected slots is not available.'})
+                if slot.date != booking_date:
+                    raise serializers.ValidationError({'time_slots': 'Selected slot dates must match the booking date.'})
+                if index > 0 and ordered_slots[index - 1].end_time != slot.start_time:
+                    raise serializers.ValidationError({'time_slots': 'Selected slots must be consecutive.'})
+
+            first_slot = ordered_slots[0]
+            last_slot = ordered_slots[-1]
+
+            if first_slot.start_time != start_time or last_slot.end_time != end_time:
+                raise serializers.ValidationError(
+                    {'time_slots': 'Selected slots must match the submitted booking start and end times.'}
+                )
+
+            data['time_slot'] = first_slot
+            data['time_slots'] = ordered_slots
+        elif time_slot:
             if time_slot.ground != ground:
                 raise serializers.ValidationError('Time slot does not belong to this ground.')
             if not time_slot.is_bookable:
@@ -312,6 +386,7 @@ class BookingCreateSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({'time_slot': 'Time slot date does not match booking date.'})
             if time_slot.start_time != start_time or time_slot.end_time != end_time:
                 raise serializers.ValidationError({'time_slot': 'Time slot timing does not match booking times.'})
+            data['time_slots'] = [time_slot]
 
         duration_hours = calculate_duration_hours(start_time, end_time)
         if duration_hours <= 0:
@@ -343,13 +418,29 @@ class BookingCreateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         validated_data['customer'] = self.context['request'].user
+        requested_slots = list(validated_data.pop('time_slots', []))
         with transaction.atomic():
-            time_slot = validated_data.get('time_slot')
-            if time_slot:
-                time_slot = TimeSlot.objects.select_for_update().get(pk=time_slot.pk)
-                if not time_slot.is_bookable:
-                    raise serializers.ValidationError({'time_slot': 'This time slot is no longer available.'})
-                validated_data['time_slot'] = time_slot
+            locked_slots = []
+            if requested_slots:
+                requested_slot_ids = [slot.pk for slot in requested_slots]
+                locked_slots = list(
+                    TimeSlot.objects.select_for_update()
+                    .filter(pk__in=requested_slot_ids)
+                    .select_related('ground')
+                    .order_by('start_time')
+                )
+                if len(locked_slots) != len(requested_slot_ids):
+                    raise serializers.ValidationError({'time_slots': 'One or more selected slots no longer exist.'})
+                for index, slot in enumerate(locked_slots):
+                    if not slot.is_bookable:
+                        raise serializers.ValidationError({'time_slots': 'One of the selected slots is no longer available.'})
+                    if slot.ground_id != validated_data['ground'].id:
+                        raise serializers.ValidationError({'time_slots': 'Selected slots must belong to this ground.'})
+                    if slot.date != validated_data['booking_date']:
+                        raise serializers.ValidationError({'time_slots': 'Selected slots must match the booking date.'})
+                    if index > 0 and locked_slots[index - 1].end_time != slot.start_time:
+                        raise serializers.ValidationError({'time_slots': 'Selected slots must remain consecutive.'})
+                validated_data['time_slot'] = locked_slots[0]
 
             overlapping_exists = Booking.objects.select_for_update().filter(
                 ground=validated_data['ground'],
@@ -363,7 +454,14 @@ class BookingCreateSerializer(serializers.ModelSerializer):
 
             booking = Booking.objects.create(**validated_data)
 
-            if booking.time_slot:
+            if locked_slots:
+                BookingSlot.objects.bulk_create(
+                    [BookingSlot(booking=booking, time_slot=slot) for slot in locked_slots]
+                )
+                for slot in locked_slots:
+                    slot.is_booked = True
+                    slot.save(update_fields=['is_booked', 'updated_at'])
+            elif booking.time_slot:
                 booking.time_slot.is_booked = True
                 booking.time_slot.save(update_fields=['is_booked', 'updated_at'])
 

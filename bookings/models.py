@@ -114,6 +114,22 @@ class Booking(models.Model):
         return max(self.total_amount - paid_amount, 0)
 
 
+class BookingSlot(models.Model):
+    """Links a booking to one or more concrete time slots."""
+
+    booking = models.ForeignKey(Booking, on_delete=models.CASCADE, related_name='booking_slots')
+    time_slot = models.ForeignKey(TimeSlot, on_delete=models.CASCADE, related_name='booking_links')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'booking_slots'
+        ordering = ['time_slot__date', 'time_slot__start_time']
+        unique_together = ['booking', 'time_slot']
+
+    def __str__(self):
+        return f"{self.booking.booking_number} -> {self.time_slot}"
+
+
 class Payment(models.Model):
     """Payment record for a booking."""
 

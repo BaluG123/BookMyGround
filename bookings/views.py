@@ -177,12 +177,12 @@ class BookingListCreateView(generics.ListCreateAPIView):
             # Admins see bookings for their grounds
             qs = Booking.objects.filter(
                 ground__owner=user
-            ).select_related('ground', 'customer')
+            ).select_related('ground', 'customer').prefetch_related('booking_slots__time_slot')
         else:
             # Customers see their own bookings
             qs = Booking.objects.filter(
                 customer=user
-            ).select_related('ground', 'customer')
+            ).select_related('ground', 'customer').prefetch_related('booking_slots__time_slot')
 
         status_filter = self.request.query_params.get('status')
         date_filter = self.request.query_params.get('date')
@@ -249,7 +249,7 @@ class BookingDetailView(generics.RetrieveAPIView):
     def get_queryset(self):
         return Booking.objects.select_related(
             'ground', 'customer', 'time_slot', 'pricing_plan'
-        ).prefetch_related('payments')
+        ).prefetch_related('payments', 'booking_slots__time_slot')
 
 
 class AdminBookingsView(generics.ListAPIView):
@@ -261,7 +261,7 @@ class AdminBookingsView(generics.ListAPIView):
     def get_queryset(self):
         qs = Booking.objects.filter(
             ground__owner=self.request.user
-        ).select_related('ground', 'customer')
+        ).select_related('ground', 'customer').prefetch_related('booking_slots__time_slot')
 
         # Optional filters
         ground_id = self.request.query_params.get('ground')
@@ -306,10 +306,15 @@ class BookingCancelView(APIView):
         booking.cancelled_by = 'admin' if request.user.role == 'admin' else 'customer'
         booking.save()
 
-        # Free the time slot
-        if booking.time_slot:
+        # Free every linked slot
+        linked_slots = list(booking.booking_slots.select_related('time_slot'))
+        if linked_slots:
+            for booking_slot in linked_slots:
+                booking_slot.time_slot.is_booked = False
+                booking_slot.time_slot.save(update_fields=['is_booked', 'updated_at'])
+        elif booking.time_slot:
             booking.time_slot.is_booked = False
-            booking.time_slot.save()
+            booking.time_slot.save(update_fields=['is_booked', 'updated_at'])
 
         notify_recipient = booking.customer if request.user == booking.ground.owner else booking.ground.owner
         create_and_send_notification(
