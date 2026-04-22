@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import TimeSlot, Booking, BookingSlot, Payment, PaymentOrder
+from .models import TimeSlot, PromoCode, Booking, BookingSlot, Payment, PaymentOrder
 
 
 class PaymentInline(admin.TabularInline):
@@ -21,14 +21,21 @@ class TimeSlotAdmin(admin.ModelAdmin):
     search_fields = ('ground__name',)
 
 
+@admin.register(PromoCode)
+class PromoCodeAdmin(admin.ModelAdmin):
+    list_display = ('code', 'discount_type', 'discount_value', 'min_booking_amount', 'is_active', 'starts_at', 'ends_at')
+    list_filter = ('discount_type', 'is_active', 'starts_at', 'ends_at')
+    search_fields = ('code', 'description')
+
+
 @admin.register(Booking)
 class BookingAdmin(admin.ModelAdmin):
     list_display = (
         'booking_number', 'customer', 'ground', 'booking_date',
-        'start_time', 'end_time', 'player_count', 'total_amount', 'status', 'payment_status',
+        'start_time', 'end_time', 'player_count', 'base_amount', 'discount_amount', 'total_amount', 'status', 'payment_status',
     )
     list_filter = ('status', 'payment_status', 'booking_date')
-    search_fields = ('booking_number', 'customer__email', 'ground__name')
+    search_fields = ('booking_number', 'customer__email', 'ground__name', 'promo_code_snapshot', 'referral_code_used')
     readonly_fields = ('booking_number', 'created_at', 'updated_at')
     inlines = [BookingSlotInline, PaymentInline]
 

@@ -1,3 +1,5 @@
+import secrets
+import string
 import uuid
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
@@ -42,6 +44,15 @@ class User(AbstractBaseUser, PermissionsMixin):
     avatar = models.ImageField(upload_to='avatars/', blank=True, null=True)
     city = models.CharField(max_length=100, blank=True)
     state = models.CharField(max_length=100, blank=True)
+    referral_code = models.CharField(max_length=16, unique=True, blank=True)
+    referred_by = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='referrals',
+    )
+    referred_at = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     date_joined = models.DateTimeField(auto_now_add=True)
@@ -66,6 +77,21 @@ class User(AbstractBaseUser, PermissionsMixin):
     @property
     def is_customer(self):
         return self.role == 'customer'
+
+    def _generate_referral_code(self):
+        seed = ''.join(ch for ch in (self.full_name or '').upper() if ch.isalnum())[:4]
+        prefix = seed or 'BMG'
+        alphabet = string.ascii_uppercase + string.digits
+        for _ in range(10):
+            candidate = f"{prefix}{secrets.choice(alphabet)}{secrets.choice(alphabet)}{secrets.choice(alphabet)}{secrets.choice(alphabet)}"
+            if not User.objects.filter(referral_code=candidate).exclude(pk=self.pk).exists():
+                return candidate
+        return f"BMG{secrets.token_hex(3).upper()}"
+
+    def save(self, *args, **kwargs):
+        if not self.referral_code:
+            self.referral_code = self._generate_referral_code()
+        super().save(*args, **kwargs)
 
 
 class NotificationDevice(models.Model):

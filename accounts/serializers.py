@@ -2,6 +2,7 @@ import re
 
 from rest_framework import serializers
 from django.contrib.auth import authenticate
+from django.utils import timezone
 from .models import User
 from .models import NotificationDevice, PushNotification, PayoutProfile
 
@@ -14,23 +15,36 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
     password = serializers.CharField(write_only=True, min_length=8)
     password_confirm = serializers.CharField(write_only=True, min_length=8)
+    referral_code = serializers.CharField(write_only=True, required=False, allow_blank=True)
 
     class Meta:
         model = User
         fields = [
             'id', 'email', 'phone', 'full_name', 'role',
-            'city', 'state', 'password', 'password_confirm',
+            'city', 'state', 'referral_code', 'password', 'password_confirm',
         ]
         read_only_fields = ['id']
 
     def validate(self, data):
+        referral_code = (data.get('referral_code') or '').strip().upper()
         if data['password'] != data.pop('password_confirm'):
             raise serializers.ValidationError({'password_confirm': 'Passwords do not match.'})
+        if referral_code:
+            try:
+                data['referred_by'] = User.objects.get(referral_code=referral_code)
+            except User.DoesNotExist:
+                raise serializers.ValidationError({'referral_code': 'Referral code is invalid.'})
+        data['referral_code'] = referral_code
         return data
 
     def create(self, validated_data):
         password = validated_data.pop('password')
+        validated_data.pop('referral_code', None)
+        referred_by = validated_data.pop('referred_by', None)
         user = User(**validated_data)
+        if referred_by:
+            user.referred_by = referred_by
+            user.referred_at = timezone.now()
         user.set_password(password)
         user.save()
         return user
@@ -64,14 +78,24 @@ class FirebaseLoginSerializer(serializers.Serializer):
 class UserProfileSerializer(serializers.ModelSerializer):
     """Full user profile."""
 
+    referred_by_name = serializers.CharField(source='referred_by.full_name', read_only=True)
+    referral_count = serializers.SerializerMethodField()
+
     class Meta:
         model = User
         fields = [
             'id', 'email', 'phone', 'full_name', 'role',
             'avatar', 'city', 'state', 'firebase_uid',
+            'referral_code', 'referred_by_name', 'referral_count',
             'is_active', 'date_joined', 'updated_at',
         ]
-        read_only_fields = ['id', 'email', 'role', 'firebase_uid', 'date_joined', 'updated_at']
+        read_only_fields = [
+            'id', 'email', 'role', 'firebase_uid', 'referral_code',
+            'referred_by_name', 'referral_count', 'date_joined', 'updated_at',
+        ]
+
+    def get_referral_count(self, obj):
+        return obj.referrals.count()
 
 
 class ChangePasswordSerializer(serializers.Serializer):

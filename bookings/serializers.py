@@ -3,12 +3,15 @@ from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime
 from django.db import transaction
 from django.utils import timezone
-from .models import TimeSlot, Booking, BookingSlot, Payment, PaymentOrder
+from .models import TimeSlot, PromoCode, Booking, BookingSlot, Payment, PaymentOrder
 from grounds.models import Ground, PricingPlan
+from accounts.models import User
 from accounts.serializers import UserMiniSerializer
 
 
 TWOPLACES = Decimal('0.01')
+REFERRAL_DISCOUNT_PERCENT = Decimal('10.00')
+REFERRAL_DISCOUNT_CAP = Decimal('150.00')
 
 
 def calculate_duration_hours(start_time, end_time):
@@ -16,6 +19,10 @@ def calculate_duration_hours(start_time, end_time):
     end_dt = datetime.combine(timezone.now().date(), end_time)
     seconds = (end_dt - start_dt).total_seconds()
     return (Decimal(seconds) / Decimal('3600')).quantize(TWOPLACES, rounding=ROUND_HALF_UP)
+
+
+def normalize_code(value):
+    return (value or '').strip().upper()
 
 
 def resolve_booking_price(ground, booking_date, duration_hours, pricing_plan=None):
@@ -50,7 +57,7 @@ def resolve_booking_price(ground, booking_date, duration_hours, pricing_plan=Non
                 raise serializers.ValidationError(
                     {'pricing_plan': 'No active pricing plan available for this duration.'}
                 )
-            
+
             hourly_rate = hourly_plan.effective_weekend_price if weekend_booking else hourly_plan.price
             amount = (Decimal(hourly_rate) * duration_hours).quantize(TWOPLACES)
             pricing_plan = hourly_plan
@@ -59,11 +66,100 @@ def resolve_booking_price(ground, booking_date, duration_hours, pricing_plan=Non
         raise serializers.ValidationError(
             {'amount': 'Minimum booking price must be at least 100 INR.'}
         )
-    
+
     return pricing_plan, amount
 
 
-# ─── Time Slot Serializers ──────────────────────────────────────
+def resolve_discount_breakdown(*, user, base_amount, promo_code_value='', referral_code_value='', current_booking=None):
+    base_amount = Decimal(base_amount).quantize(TWOPLACES)
+    total_discount = Decimal('0.00')
+    applied_promo = None
+    promo_snapshot = ''
+    referral_snapshot = ''
+    referral_owner = None
+
+    promo_code_value = normalize_code(promo_code_value)
+    referral_code_value = normalize_code(referral_code_value)
+
+    if promo_code_value:
+        try:
+            applied_promo = PromoCode.objects.get(code=promo_code_value)
+        except PromoCode.DoesNotExist:
+            raise serializers.ValidationError({'promo_code': 'Promo code is invalid.'})
+
+        now = timezone.now()
+        if not applied_promo.is_active:
+            raise serializers.ValidationError({'promo_code': 'Promo code is inactive.'})
+        if applied_promo.starts_at and applied_promo.starts_at > now:
+            raise serializers.ValidationError({'promo_code': 'Promo code is not live yet.'})
+        if applied_promo.ends_at and applied_promo.ends_at < now:
+            raise serializers.ValidationError({'promo_code': 'Promo code has expired.'})
+        if base_amount < applied_promo.min_booking_amount:
+            raise serializers.ValidationError(
+                {'promo_code': f'Promo code requires a minimum booking amount of Rs. {applied_promo.min_booking_amount}.'}
+            )
+
+        promo_usage_qs = Booking.objects.filter(applied_promo_code=applied_promo).exclude(status='cancelled')
+        if current_booking:
+            promo_usage_qs = promo_usage_qs.exclude(pk=current_booking.pk)
+        if applied_promo.max_uses and promo_usage_qs.count() >= applied_promo.max_uses:
+            raise serializers.ValidationError({'promo_code': 'Promo code usage limit has been reached.'})
+
+        user_usage_qs = promo_usage_qs.filter(customer=user)
+        if applied_promo.per_user_limit and user_usage_qs.count() >= applied_promo.per_user_limit:
+            raise serializers.ValidationError({'promo_code': 'You have already used this promo code.'})
+
+        if applied_promo.discount_type == 'percentage':
+            promo_discount = (base_amount * applied_promo.discount_value / Decimal('100')).quantize(TWOPLACES, rounding=ROUND_HALF_UP)
+        else:
+            promo_discount = Decimal(applied_promo.discount_value).quantize(TWOPLACES)
+
+        if applied_promo.max_discount_amount:
+            promo_discount = min(promo_discount, Decimal(applied_promo.max_discount_amount).quantize(TWOPLACES))
+
+        total_discount += min(promo_discount, base_amount)
+        promo_snapshot = applied_promo.code
+
+    if referral_code_value:
+        try:
+            referral_owner = User.objects.get(referral_code=referral_code_value)
+        except User.DoesNotExist:
+            raise serializers.ValidationError({'referral_code': 'Referral code is invalid.'})
+
+        if referral_owner.pk == user.pk:
+            raise serializers.ValidationError({'referral_code': 'You cannot use your own referral code.'})
+
+        prior_booking_qs = Booking.objects.filter(customer=user).exclude(status='cancelled')
+        if current_booking:
+            prior_booking_qs = prior_booking_qs.exclude(pk=current_booking.pk)
+        if prior_booking_qs.exists():
+            raise serializers.ValidationError({'referral_code': 'Referral pricing is only available on the first active booking.'})
+
+        if user.referred_by_id and user.referred_by_id != referral_owner.pk:
+            raise serializers.ValidationError({'referral_code': 'This account is already linked to a different referral owner.'})
+
+        referral_discount = (base_amount * REFERRAL_DISCOUNT_PERCENT / Decimal('100')).quantize(TWOPLACES, rounding=ROUND_HALF_UP)
+        referral_discount = min(referral_discount, REFERRAL_DISCOUNT_CAP)
+        total_discount += min(referral_discount, max(base_amount - total_discount, Decimal('0.00')))
+        referral_snapshot = referral_owner.referral_code
+
+    total_discount = min(total_discount, base_amount).quantize(TWOPLACES)
+    final_amount = (base_amount - total_discount).quantize(TWOPLACES)
+    if final_amount < Decimal('100.00'):
+        raise serializers.ValidationError(
+            {'amount': 'Booking total after discounts must remain at least 100 INR.'}
+        )
+
+    return {
+        'base_amount': base_amount,
+        'discount_amount': total_discount,
+        'total_amount': final_amount,
+        'applied_promo_code': applied_promo,
+        'promo_code_snapshot': promo_snapshot,
+        'referral_code_used': referral_snapshot,
+        'referral_owner': referral_owner,
+    }
+
 
 class TimeSlotSerializer(serializers.ModelSerializer):
     is_bookable = serializers.BooleanField(read_only=True)
@@ -136,8 +232,6 @@ class TimeSlotBulkCreateSerializer(serializers.Serializer):
         return created_slots
 
 
-# ─── Payment Serializer ────────────────────────────────────────
-
 class PaymentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Payment
@@ -185,8 +279,6 @@ class PaymentVerifySerializer(serializers.Serializer):
     gateway_response = serializers.JSONField(required=False)
 
 
-# ─── Booking Serializers ───────────────────────────────────────
-
 class BookingListSerializer(serializers.ModelSerializer):
     ground_name = serializers.CharField(source='ground.name', read_only=True)
     ground_city = serializers.CharField(source='ground.city', read_only=True)
@@ -197,6 +289,7 @@ class BookingListSerializer(serializers.ModelSerializer):
     outstanding_amount = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     can_cancel = serializers.SerializerMethodField()
     slot_count = serializers.SerializerMethodField()
+    promo_code_display = serializers.CharField(source='promo_code_snapshot', read_only=True)
 
     class Meta:
         model = Booking
@@ -204,7 +297,8 @@ class BookingListSerializer(serializers.ModelSerializer):
             'id', 'booking_number', 'ground', 'ground_name', 'ground_city',
             'ground_image', 'customer_info',
             'booking_date', 'start_time', 'end_time', 'duration_hours',
-            'total_amount', 'status', 'status_display',
+            'base_amount', 'discount_amount', 'total_amount', 'promo_code_display', 'referral_code_used',
+            'status', 'status_display',
             'payment_status', 'payment_status_display',
             'outstanding_amount', 'can_cancel', 'slot_count', 'created_at',
         ]
@@ -248,6 +342,8 @@ class BookingDetailSerializer(serializers.ModelSerializer):
     can_cancel = serializers.SerializerMethodField()
     can_confirm = serializers.SerializerMethodField()
     can_complete = serializers.SerializerMethodField()
+    promo_code_display = serializers.CharField(source='promo_code_snapshot', read_only=True)
+    referral_owner_name = serializers.CharField(source='referral_owner.full_name', read_only=True)
 
     class Meta:
         model = Booking
@@ -257,7 +353,7 @@ class BookingDetailSerializer(serializers.ModelSerializer):
             'ground', 'ground_name', 'ground_address', 'ground_city',
             'time_slot', 'time_slot_info', 'pricing_plan',
             'booking_date', 'start_time', 'end_time', 'duration_hours',
-            'total_amount',
+            'base_amount', 'discount_amount', 'total_amount', 'promo_code_display', 'referral_code_used', 'referral_owner_name',
             'status', 'status_display',
             'payment_status', 'payment_status_display',
             'customer_name', 'customer_phone', 'player_count', 'notes',
@@ -306,18 +402,22 @@ class BookingCreateSerializer(serializers.ModelSerializer):
         required=False,
         write_only=True,
     )
+    promo_code = serializers.CharField(required=False, allow_blank=True, write_only=True)
+    referral_code = serializers.CharField(required=False, allow_blank=True, write_only=True)
 
     class Meta:
         model = Booking
         fields = [
             'ground', 'time_slot', 'time_slots', 'pricing_plan',
             'booking_date', 'start_time', 'end_time',
-            'duration_hours', 'total_amount',
+            'duration_hours', 'base_amount', 'discount_amount', 'total_amount',
             'customer_name', 'customer_phone', 'player_count', 'notes',
-            'special_requests',
+            'special_requests', 'promo_code', 'referral_code',
         ]
         extra_kwargs = {
             'duration_hours': {'required': False},
+            'base_amount': {'required': False},
+            'discount_amount': {'required': False},
             'total_amount': {'required': False},
         }
 
@@ -393,14 +493,22 @@ class BookingCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('Booking duration must be greater than zero.')
         data['duration_hours'] = duration_hours
 
-        resolved_plan, total_amount = resolve_booking_price(
+        resolved_plan, base_amount = resolve_booking_price(
             ground=ground,
             booking_date=booking_date,
             duration_hours=duration_hours,
             pricing_plan=data.get('pricing_plan'),
         )
         data['pricing_plan'] = resolved_plan
-        data['total_amount'] = total_amount
+
+        discount_breakdown = resolve_discount_breakdown(
+            user=self.context['request'].user,
+            base_amount=base_amount,
+            promo_code_value=data.get('promo_code'),
+            referral_code_value=data.get('referral_code'),
+            current_booking=self.instance,
+        )
+        data.update(discount_breakdown)
 
         overlapping_bookings = Booking.objects.filter(
             ground=ground,
@@ -419,6 +527,9 @@ class BookingCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         validated_data['customer'] = self.context['request'].user
         requested_slots = list(validated_data.pop('time_slots', []))
+        validated_data.pop('promo_code', None)
+        validated_data.pop('referral_code', None)
+        referral_owner = validated_data.get('referral_owner')
         with transaction.atomic():
             locked_slots = []
             if requested_slots:
@@ -464,6 +575,11 @@ class BookingCreateSerializer(serializers.ModelSerializer):
             elif booking.time_slot:
                 booking.time_slot.is_booked = True
                 booking.time_slot.save(update_fields=['is_booked', 'updated_at'])
+
+            if referral_owner and booking.customer.referred_by_id is None:
+                booking.customer.referred_by = referral_owner
+                booking.customer.referred_at = timezone.now()
+                booking.customer.save(update_fields=['referred_by', 'referred_at', 'updated_at'])
 
             booking.ground.total_bookings += 1
             booking.ground.save(update_fields=['total_bookings'])

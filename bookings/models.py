@@ -36,6 +36,41 @@ class TimeSlot(models.Model):
         return self.is_available and not self.is_booked
 
 
+class PromoCode(models.Model):
+    DISCOUNT_TYPE_CHOICES = (
+        ('flat', 'Flat'),
+        ('percentage', 'Percentage'),
+    )
+
+    code = models.CharField(max_length=32, unique=True)
+    description = models.CharField(max_length=180, blank=True)
+    discount_type = models.CharField(max_length=20, choices=DISCOUNT_TYPE_CHOICES, default='flat')
+    discount_value = models.DecimalField(max_digits=10, decimal_places=2)
+    max_discount_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    min_booking_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    max_uses = models.PositiveIntegerField(null=True, blank=True)
+    per_user_limit = models.PositiveIntegerField(default=1)
+    starts_at = models.DateTimeField(null=True, blank=True)
+    ends_at = models.DateTimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_promo_codes',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'promo_codes'
+        ordering = ['code']
+
+    def __str__(self):
+        return self.code
+
+
 class Booking(models.Model):
     """A booking made by a customer for a ground."""
 
@@ -75,7 +110,25 @@ class Booking(models.Model):
     start_time = models.TimeField()
     end_time = models.TimeField()
     duration_hours = models.DecimalField(max_digits=5, decimal_places=2, default=1)
+    base_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     total_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    applied_promo_code = models.ForeignKey(
+        PromoCode,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='bookings',
+    )
+    promo_code_snapshot = models.CharField(max_length=32, blank=True)
+    referral_code_used = models.CharField(max_length=16, blank=True)
+    referral_owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='referral_bookings',
+    )
     status = models.CharField(max_length=15, choices=STATUS_CHOICES, default='pending')
     payment_status = models.CharField(
         max_length=15, choices=PAYMENT_STATUS_CHOICES, default='pending'

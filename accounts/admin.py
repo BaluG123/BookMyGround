@@ -5,14 +5,15 @@ from .models import User, NotificationDevice, PushNotification, PayoutProfile
 
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
-    list_display = ('email', 'full_name', 'role', 'phone', 'city', 'is_active', 'date_joined')
+    list_display = ('email', 'full_name', 'role', 'referral_code', 'phone', 'city', 'is_active', 'date_joined')
     list_filter = ('role', 'is_active', 'city', 'date_joined')
-    search_fields = ('email', 'full_name', 'phone')
+    search_fields = ('email', 'full_name', 'phone', 'referral_code')
     ordering = ('-date_joined',)
 
     fieldsets = (
         (None, {'fields': ('email', 'password')}),
         ('Personal Info', {'fields': ('full_name', 'phone', 'avatar', 'city', 'state')}),
+        ('Referral', {'fields': ('referral_code', 'referred_by', 'referred_at')}),
         ('Role & Firebase', {'fields': ('role', 'firebase_uid')}),
         ('Permissions', {'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
     )
